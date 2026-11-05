@@ -1,9 +1,5 @@
 package com.fantasyfolk.profession;
 
-import java.util.HashMap;
-import java.util.Map;
-import java.util.UUID;
-
 import net.fabricmc.fabric.api.event.player.UseEntityCallback;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
@@ -14,11 +10,11 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.EntityHitResult;
 
+import com.fantasyfolk.community.ConfirmationService;
+import com.fantasyfolk.registry.ModItems;
+
 /** Sneak-interaction confirmation flow for assigning, changing and removing professions. */
 public final class ProfessionInteractionHandler {
-	private static final int CONFIRMATION_WINDOW_TICKS = 200;
-	private static final Map<UUID, PendingAction> PENDING = new HashMap<>();
-
 	private ProfessionInteractionHandler() {
 	}
 
@@ -34,40 +30,45 @@ public final class ProfessionInteractionHandler {
 			EntityHitResult hitResult
 	) {
 		if (level.isClientSide() || !(player instanceof ServerPlayer serverPlayer)
-				|| hand != InteractionHand.MAIN_HAND
-				|| !player.isSecondaryUseActive()) {
+				|| hand != InteractionHand.MAIN_HAND) {
+			return InteractionResult.PASS;
+		}
+		ItemStack held = serverPlayer.getItemInHand(InteractionHand.MAIN_HAND);
+		if (held.is(ModItems.COMMUNITY_LEDGER)
+				|| serverPlayer.getItemInHand(InteractionHand.OFF_HAND).is(ModItems.COMMUNITY_LEDGER)) {
+			ConfirmationService.cancelIfActionStartsWith(serverPlayer.getUUID(), "profession.");
+			return InteractionResult.PASS;
+		}
+		if (!player.isSecondaryUseActive()) {
 			return InteractionResult.PASS;
 		}
 		if (!(entity instanceof ProfessionHolder holder)) {
-			PENDING.remove(serverPlayer.getUUID());
+			ConfirmationService.cancel(serverPlayer.getUUID());
 			return InteractionResult.PASS;
 		}
 
-		ItemStack held = serverPlayer.getItemInHand(InteractionHand.MAIN_HAND);
 		ProfessionType target = ProfessionEquipment.professionFor(held).orElse(null);
 		boolean removal = held.isEmpty() && holder.getProfessionId() != null;
 		if (target == null && !removal) {
-			PENDING.remove(serverPlayer.getUUID());
+			ConfirmationService.cancel(serverPlayer.getUUID());
 			return InteractionResult.PASS;
 		}
 
 		long now = serverPlayer.level().getServer().getTickCount();
-		PendingAction pending = PENDING.get(serverPlayer.getUUID());
-		if (pending == null || pending.expired(now) || !pending.matches(entity, target, removal, held)) {
-			PENDING.put(serverPlayer.getUUID(), new PendingAction(
-					entity.getUUID(),
-					target == null ? null : target.id().toString(),
-					removal,
-					held.copy(),
-					now + CONFIRMATION_WINDOW_TICKS
-			));
+		String professionId = target == null ? "" : target.id().toString();
+		ConfirmationService.Request request = new ConfirmationService.Request(
+				removal ? "profession.remove" : "profession.assign",
+				entity.getUUID().toString(),
+				professionId,
+				held
+		);
+		if (!ConfirmationService.checkOrArm(serverPlayer.getUUID(), request, now)) {
 			serverPlayer.sendSystemMessage(removal
 					? Component.translatable("message.fantasyfolk.profession.confirm_remove")
 					: Component.translatable("message.fantasyfolk.profession.confirm_assign", targetDisplay(target)));
 			return InteractionResult.SUCCESS_SERVER;
 		}
 
-		PENDING.remove(serverPlayer.getUUID());
 		if (removal) {
 			ProfessionManager.RemovalResult result = ProfessionManager.remove(serverPlayer, entity);
 			sendRemovalResult(serverPlayer, result);
@@ -112,23 +113,4 @@ public final class ProfessionInteractionHandler {
 		player.sendSystemMessage(message);
 	}
 
-	private record PendingAction(
-			UUID entityId,
-			String professionId,
-			boolean removal,
-			ItemStack item,
-			long expiresAt
-	) {
-		private boolean expired(long now) {
-			return now > expiresAt;
-		}
-
-		private boolean matches(Entity entity, ProfessionType target, boolean currentRemoval, ItemStack currentItem) {
-			String currentProfessionId = target == null ? null : target.id().toString();
-			return entity.getUUID().equals(entityId)
-					&& removal == currentRemoval
-					&& java.util.Objects.equals(professionId, currentProfessionId)
-					&& ItemStack.matches(item, currentItem);
-		}
-	}
 }

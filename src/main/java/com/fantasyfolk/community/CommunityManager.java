@@ -4,6 +4,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.Level;
 
 import com.fantasyfolk.block.CommunityMarkerBlock;
@@ -76,7 +77,17 @@ public final class CommunityManager {
 	}
 
 	public static Optional<Community> findById(MinecraftServer server, UUID id) {
+		refreshLoadedStates(server);
 		return Optional.ofNullable(storage(server).get(id));
+	}
+
+	public static Optional<Community> findAt(
+			MinecraftServer server,
+			ResourceKey<Level> dimension,
+			BlockPos center
+	) {
+		refreshLoadedStates(server);
+		return findAt(storage(server), dimension, center);
 	}
 
 	public static Optional<Community> findNearby(MinecraftServer server, ResourceKey<Level> dimension, BlockPos pos) {
@@ -95,6 +106,26 @@ public final class CommunityManager {
 	}
 
 	public static LinkResult linkMember(ServerLevel level, UUID communityId, UUID entityId) {
+		return linkMember(level, communityId, entityId, null);
+	}
+
+	public static LinkResult linkMember(ServerLevel level, UUID communityId, Entity entity) {
+		if (!(entity instanceof CommunityHolder)) {
+			return LinkResult.UNSUPPORTED_ENTITY;
+		}
+		if (!(entity.level() instanceof ServerLevel entityLevel)
+				|| !entityLevel.dimension().equals(level.dimension())) {
+			return LinkResult.DIMENSION_MISMATCH;
+		}
+		return linkMember(level, communityId, entity.getUUID(), entity.blockPosition());
+	}
+
+	private static LinkResult linkMember(
+			ServerLevel level,
+			UUID communityId,
+			UUID entityId,
+			BlockPos entityPosition
+	) {
 		CommunityStorage storage = storage(level.getServer());
 		Community community = storage.get(communityId);
 		if (community == null) {
@@ -105,6 +136,9 @@ public final class CommunityManager {
 		}
 		if (community.state() == CommunityState.INACTIVE) {
 			return LinkResult.COMMUNITY_INACTIVE;
+		}
+		if (entityPosition != null && !community.isWithinTerritory(entityPosition)) {
+			return LinkResult.OUTSIDE_TERRITORY;
 		}
 		if (community.hasMember(entityId)) {
 			return LinkResult.ALREADY_MEMBER;
@@ -197,6 +231,8 @@ public final class CommunityManager {
 		DIMENSION_MISMATCH,
 		COMMUNITY_INACTIVE,
 		ALREADY_MEMBER,
-		ALREADY_LINKED
+		ALREADY_LINKED,
+		OUTSIDE_TERRITORY,
+		UNSUPPORTED_ENTITY
 	}
 }

@@ -21,6 +21,8 @@ import net.minecraft.world.level.storage.TagValueOutput;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
+import java.util.Optional;
+
 class ProfessionDataTest {
 	@BeforeAll
 	static void bootstrapMinecraftRegistries() {
@@ -73,6 +75,11 @@ class ProfessionDataTest {
 	private static final class TestHolder implements ProfessionHolder {
 		private String id;
 		private ItemStack equipment = ItemStack.EMPTY;
+
+		@Override
+		public Optional<java.util.UUID> getCommunityId() {
+			return Optional.empty();
+		}
 
 		@Override
 		public String getProfessionId() {

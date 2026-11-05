@@ -118,6 +118,12 @@ public final class Community {
 		return members.stream().anyMatch(member -> member.entityId().equals(entityId));
 	}
 
+	public boolean isWithinTerritory(BlockPos position) {
+		long dx = center.getX() - (long) position.getX();
+		long dz = center.getZ() - (long) position.getZ();
+		return dx * dx + dz * dz <= (long) radius * radius;
+	}
+
 	public boolean addMember(UUID entityId, ResourceKey<Level> memberDimension) {
 		if (!dimension.equals(memberDimension) || hasMember(entityId)) {
 			return false;

@@ -75,7 +75,7 @@ public class ExportPiglinUv {
             data.put("vanillaTextureSha256", sha(bytes));
             if (image.getWidth() != width || image.getHeight() != height) throw new AssertionError("Atlas mismatch");
         }
-        var production = Path.of("src/main/resources/assets/fantasyfolk/textures/entity/goblin.png");
+        var production = Path.of("src/main/resources/assets/fantasyfolk/textures/entity/goblin-old.png");
         byte[] original = Files.readAllBytes(production);
         Path backup = out.resolve("goblin_original.png");
         if (!Files.exists(backup)) Files.copy(production, backup);

@@ -231,7 +231,7 @@ public class PrepareUvAssets {
         Files.writeString(dir.resolve("uv_mapping.md"),md.toString());
     }
     static void validate()throws Exception{
-        var original=Files.readAllBytes(Path.of("src/main/resources/assets/fantasyfolk/textures/entity/goblin.png"));
+        var original=Files.readAllBytes(Path.of("src/main/resources/assets/fantasyfolk/textures/entity/goblin-old.png"));
         if(!Arrays.equals(original,Files.readAllBytes(dir.resolve("goblin_original.png"))))throw new AssertionError("Production changed");
         if(!HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(original)).equals(data.get("productionSha256").getAsString()))throw new AssertionError("Hash mismatch");
         var candidate=ImageIO.read(dir.resolve("goblin_candidate.png").toFile());

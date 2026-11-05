@@ -23,7 +23,7 @@ public final class ModEntities {
 			BuiltInRegistries.ENTITY_TYPE,
 			GOBLIN_KEY,
 			EntityType.Builder.of(Goblin::new, MobCategory.CREATURE)
-					.sized(0.6F, 1.7F)
+					.sized(0.6F, 1.45F)
 					.clientTrackingRange(8)
 					.build(GOBLIN_KEY)
 	);

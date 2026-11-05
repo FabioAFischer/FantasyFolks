@@ -1,0 +1,23 @@
+{
+	"entity.fantasyfolk.goblin": "Goblin",
+	"item.fantasyfolk.goblin_spawn_egg": "Ovo de Goblin",
+	"block.fantasyfolk.community_marker": "Marco de Comunidade",
+	"item.fantasyfolk.community_marker": "Marco de Comunidade",
+	"profession.fantasyfolk.guard": "Guarda",
+	"profession.fantasyfolk.hunter": "Caçador",
+	"message.fantasyfolk.profession.confirm_assign": "Agache e interaja novamente em até 10 segundos para atribuir %s. O item da mão será transferido.",
+	"message.fantasyfolk.profession.confirm_remove": "Agache e interaja novamente em até 10 segundos para remover a profissão e recuperar o equipamento.",
+	"message.fantasyfolk.profession.assigned": "%s atribuído. O equipamento foi transferido.",
+	"message.fantasyfolk.profession.changed": "Profissão alterada para %s. O equipamento anterior foi devolvido.",
+	"message.fantasyfolk.profession.already_assigned": "Essa profissão e esse equipamento já estão atribuídos.",
+	"message.fantasyfolk.profession.incompatible": "Esse item não é compatível com a profissão selecionada.",
+	"message.fantasyfolk.profession.inventory_full": "Não há espaço seguro no inventário para devolver o equipamento anterior.",
+	"message.fantasyfolk.profession.no_community": "Este NPC Fantasy Folk precisa pertencer a uma comunidade existente.",
+	"message.fantasyfolk.profession.community_inactive": "Esta comunidade está inativa e não aceita novas profissões.",
+	"message.fantasyfolk.profession.unknown_saved": "Este NPC tem uma profissão salva desconhecida; o equipamento foi preservado e nenhuma alteração foi feita.",
+	"message.fantasyfolk.profession.not_authorized": "Você não tem autorização para alterar este habitante.",
+	"message.fantasyfolk.profession.not_supported": "Esta entidade não suporta profissões Fantasy Folk.",
+	"message.fantasyfolk.profession.removed": "Profissão removida. O equipamento foi devolvido.",
+	"message.fantasyfolk.profession.no_profession": "Este NPC não tem profissão.",
+	"message.fantasyfolk.profession.empty_hand": "Mantenha a mão principal vazia para remover a profissão."
+}

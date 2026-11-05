@@ -5,7 +5,12 @@ import net.fabricmc.api.ModInitializer;
 import net.minecraft.resources.Identifier;
 
 import com.fantasyfolk.registry.ModEntities;
+import com.fantasyfolk.registry.ModBlocks;
 import com.fantasyfolk.registry.ModItems;
+import com.fantasyfolk.command.CommunityCommands;
+import com.fantasyfolk.community.CommunityEvents;
+import com.fantasyfolk.profession.ProfessionInteractionHandler;
+import com.fantasyfolk.profession.ProfessionRegistry;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,8 +27,13 @@ public final class FantasyFolk implements ModInitializer {
 
 	@Override
 	public void onInitialize() {
+		ModBlocks.initialize();
 		ModEntities.initialize();
 		ModItems.initialize();
+		ProfessionRegistry.initialize();
+		CommunityEvents.initialize();
+		CommunityCommands.initialize();
+		ProfessionInteractionHandler.initialize();
 		LOGGER.info("Fantasy Folk initialized.");
 	}
 

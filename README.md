@@ -2,9 +2,9 @@
 
 Esqueleto inicial de um mod para Minecraft Java Edition 26.3 usando Fabric.
 
-Esta etapa prepara o projeto e o ciclo de inicialização do mod. O protótipo
-Goblin v0.1 está implementado; anões, draconatos e tieflings ainda não foram
-implementados.
+O projeto contém o Goblin v0.2, a infraestrutura de comunidades v0.3 e o sistema
+de profissões por equipamentos v0.4; anões, draconatos e tieflings ainda não
+foram implementados.
 
 ## Ambiente
 
@@ -37,7 +37,7 @@ instalado globalmente.
 O comando `build` também gera o JAR em `build/libs/`. A pasta `run/` contém
 os dados locais da execução de desenvolvimento e não deve ser versionada.
 
-## Goblin v0.1
+## Goblin v0.2
 
 O Goblin é uma entidade independente registrada como `fantasyfolk:goblin`.
 Ele possui 20 pontos de vida, velocidade `0.28`, comportamento neutro,
@@ -53,6 +53,151 @@ Para invocá-lo no jogo:
 
 O ovo de spawn está na aba Criativo de ovos de spawn. O spawn natural está
 desativado nesta versão.
+
+## Sistema de comunidades v0.3
+
+As comunidades são armazenadas no `SavedDataStorage` do servidor e possuem UUID,
+tipo (`VANILLA` ou `CUSTOM`), nome automático, dimensão, centro, raio de 32
+blocos, estado (`ACTIVE` ou `INACTIVE`) e referências persistentes aos UUIDs dos
+habitantes. O vínculo não guarda referências diretas a entidades descarregadas.
+
+### Vila vanilla
+
+Em uma vila existente, agache-se e interaja com um sino usando a mão vazia.
+O Fantasy Folk consulta apenas a área local: o sino precisa ser um ponto de
+reunião, deve haver pelo menos um villager carregado e pelo menos um POI
+adicional (por exemplo, cama ou estação de trabalho). Um sino isolado não é
+registrado. Sem a interação especial, o sino mantém seu comportamento vanilla.
+
+### Assentamento próprio
+
+O item `fantasyfolk:community_marker` está na aba Criativo de blocos funcionais.
+Ao posicioná-lo em uma área sem sobreposição, ele funda uma comunidade `CUSTOM`
+com o bloco como centro. Dois centros iguais ou territórios sobrepostos são
+recusados. Destruir o marco marca a comunidade como `INACTIVE`, preservando seus
+habitantes e dados.
+
+### Comandos temporários de desenvolvimento
+
+Todos os comandos abaixo exigem permissão de operador:
+
+```text
+/fantasyfolk village info
+/fantasyfolk village info <uuid-da-comunidade>
+/fantasyfolk village list
+/fantasyfolk village link <uuid-da-comunidade> <entidade-ou-seletor>
+/fantasyfolk village unlink <entidade-ou-seletor>
+```
+
+Exemplo de fluxo com um Goblin:
+
+```text
+/summon fantasyfolk:goblin
+/fantasyfolk village list
+/fantasyfolk village link 00000000-0000-0000-0000-000000000000 @e[type=fantasyfolk:goblin,limit=1,sort=nearest]
+/fantasyfolk village info
+/fantasyfolk village unlink @e[type=fantasyfolk:goblin,limit=1,sort=nearest]
+```
+
+O UUID do exemplo deve ser substituído pelo valor exibido por `list`. A versão
+atual aceita vínculos de Goblins; a abstração é independente de raça e será
+reutilizada para Anões, Draconatos e Tieflings. Villagers vanilla nunca são
+convertidos nem vinculados automaticamente.
+
+## Sistema de profissões v0.4
+
+As profissões são registradas em `ProfessionRegistry` e não ficam acopladas ao
+Goblin. Qualquer raça futura pode implementar `ProfessionHolder` e reutilizar o
+mesmo manager, a mesma confirmação e as mesmas transações de inventário.
+
+### Profissões e equipamentos
+
+| ID | Nome | Equipamento aceito | Slot do NPC |
+| --- | --- | --- | --- |
+| `fantasyfolk:guard` | Guarda | espadas vanilla (`#minecraft:swords`) | mão principal |
+| `fantasyfolk:hunter` | Caçador | arco vanilla (`minecraft:bow`) | mão principal |
+
+Não há atribuição automática nem IA de profissão nesta versão. A tabela de
+mapeamento fica isolada para que picaretas, machados, enxadas e varas de pesca
+possam ser adicionados depois sem alterar as entidades.
+
+### Atribuir, trocar e remover
+
+O NPC precisa estar vinculado a uma comunidade existente. A comunidade precisa
+estar `ACTIVE` para receber uma profissão nova. Uma comunidade `INACTIVE`
+preserva as profissões já salvas, mas não aceita novas atribuições ou trocas.
+
+1. Segure uma espada ou arco na mão principal.
+2. Agache e interaja com um Goblin vinculado à comunidade.
+3. Interaja novamente, ainda agachado, em até 10 segundos para confirmar.
+
+A primeira interação só pede confirmação; nenhum item é consumido. Na confirmação,
+uma unidade do item é transferida para a mão principal do NPC. Ao trocar, a
+espada/arco anterior volta para o inventário antes de o novo item ser aplicado.
+Encantamentos, durabilidade e componentes são preservados por cópia do
+`ItemStack`.
+
+Para remover, deixe a mão principal vazia, agache e interaja duas vezes. A
+remoção só acontece se houver espaço seguro para devolver o equipamento. Se o
+inventário estiver cheio, a operação é cancelada sem alterar o NPC nem o
+inventário. A mesma regra evita perda ou duplicação durante trocas.
+
+### Persistência e aparência
+
+O ID da profissão e o `ItemStack` associado são salvos no NBT normal da entidade,
+junto com o vínculo comunitário já existente. IDs desconhecidos de versões
+futuras são mantidos com seu equipamento, sem derrubar o carregamento nem
+descartar silenciosamente o item. O renderer humanoide já possui a camada
+vanilla de item na mão; por isso a arma/arco aparece sem alterar a geometria,
+UV, textura ou animação do Goblin v0.2.
+
+### Roteiro de teste manual A–J
+
+Com Java 25 configurado, execute A e depois use o cliente de desenvolvimento
+para B–J:
+
+```text
+A. ./gradlew build
+B. ./gradlew runClient
+C. Dê um `community_marker`, coloque-o, invoque um Goblin e faça `village list`.
+   Vincule-o com `/fantasyfolk village link <uuid> @e[type=fantasyfolk:goblin,limit=1,sort=nearest]`.
+D. Segure uma espada vanilla; agache e interaja duas vezes. Confirme Guarda,
+   mão principal e redução de exatamente uma unidade.
+E. Verifique visualmente a espada na mão do Goblin e repita a interação: nada
+   deve ser duplicado.
+F. Segure um arco e repita a confirmação. A espada anterior deve voltar e o
+   Goblin deve ficar Caçador com o arco.
+G. Esvazie a mão, repita a confirmação e verifique que arco e profissão somem
+   do NPC, enquanto o arco volta ao inventário.
+H. Teste arco/espada com encantamento ou dano: os componentes devem permanecer.
+I. Teste confirmação expirada, item trocado, outro NPC e inventário cheio:
+   nenhuma tentativa inválida deve mover item.
+J. Saia/reentre ou descarregue/recarregue o chunk; depois quebre o marco e
+   confirme que a comunidade fica inativa, sem apagar a profissão existente.
+```
+
+Para testar a rejeição de comunidade, invoque um Goblin sem executar o comando
+`village link`: a confirmação não deve atribuir a profissão e o item deve
+continuar na mão do jogador. Para testar a troca com inventário cheio, deixe o
+NPC já profissionalizado e preencha os slots de inventário com itens não
+empilháveis antes de oferecer o novo equipamento.
+
+### Limitações conhecidas
+
+- A detecção de vila é sob demanda e não faz uma busca global. Ela considera
+  apenas POIs e villagers disponíveis na área carregada no momento da interação.
+- A perda do sino vanilla é reconciliada de forma localizada quando a comunidade
+  é consultada (`info`/`list`) e o chunk do centro está carregado; não há varredura
+  contínua do mundo.
+- Não há recuperação ou transferência automática de centros inativos.
+- Profissões não alteram IA, comércio ou coleta; o NPC apenas exibe o equipamento
+  e mantém o estado persistente.
+- Apenas Guarda e Caçador estão implementados; as outras profissões previstas
+  são somente pontos de extensão da tabela de equipamentos.
+- A interação atual é um fluxo de mensagens, sem interface gráfica.
+- O teste manual completo requer um cliente Minecraft; os testes automatizados
+  cobrem registro/mapeamento disponível no ambiente de teste e persistência de
+  componentes.
 
 ## Estrutura inicial
 

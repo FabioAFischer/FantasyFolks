@@ -77,8 +77,17 @@ public final class CommunityManager {
 	}
 
 	public static Optional<Community> findById(MinecraftServer server, UUID id) {
-		refreshLoadedStates(server);
-		return Optional.ofNullable(storage(server).get(id));
+		CommunityStorage storage = storage(server);
+		Community community = storage.get(id);
+		if (community != null) {
+			refreshLoadedState(server, storage, community);
+		}
+		return Optional.ofNullable(community);
+	}
+
+	public static boolean isMember(MinecraftServer server, UUID communityId, UUID entityId) {
+		Community community = storage(server).get(communityId);
+		return community != null && community.hasMember(entityId);
 	}
 
 	public static Optional<Community> findAt(
@@ -177,21 +186,29 @@ public final class CommunityManager {
 	public static void refreshLoadedStates(MinecraftServer server) {
 		CommunityStorage storage = storage(server);
 		for (Community community : storage.all()) {
-			if (community.state() != CommunityState.ACTIVE) {
-				continue;
-			}
-			ServerLevel level = server.getLevel(community.dimension());
-			if (level == null || !level.isLoaded(community.center())) {
-				continue;
-			}
-			boolean anchorPresent = switch (community.type()) {
-				case CUSTOM -> level.getBlockState(community.center()).is(CommunityMarkerBlock.INSTANCE);
-				case VANILLA -> VillageDetector.hasBellAnchor(level, community.center());
-			};
-			if (!anchorPresent) {
-				community.setState(CommunityState.INACTIVE);
-				storage.markDirty();
-			}
+			refreshLoadedState(server, storage, community);
+		}
+	}
+
+	private static void refreshLoadedState(
+			MinecraftServer server,
+			CommunityStorage storage,
+			Community community
+	) {
+		if (community.state() != CommunityState.ACTIVE) {
+			return;
+		}
+		ServerLevel level = server.getLevel(community.dimension());
+		if (level == null || !level.isLoaded(community.center())) {
+			return;
+		}
+		boolean anchorPresent = switch (community.type()) {
+			case CUSTOM -> level.getBlockState(community.center()).is(CommunityMarkerBlock.INSTANCE);
+			case VANILLA -> VillageDetector.hasBellAnchor(level, community.center());
+		};
+		if (!anchorPresent) {
+			community.setState(CommunityState.INACTIVE);
+			storage.markDirty();
 		}
 	}
 

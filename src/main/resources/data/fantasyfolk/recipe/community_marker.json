@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "building",
+  "key": {
+    "S": "minecraft:stone",
+    "B": "minecraft:bell",
+    "W": "minecraft:oak_planks"
+  },
+  "pattern": [
+    "SSS",
+    "SBS",
+    "SWS"
+  ],
+  "result": {
+    "id": "fantasyfolk:community_marker"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "key": {
+    "P": "minecraft:paper",
+    "B": "minecraft:book",
+    "I": "minecraft:iron_nugget"
+  },
+  "pattern": [
+    " P ",
+    " B ",
+    " I "
+  ],
+  "result": {
+    "id": "fantasyfolk:community_ledger"
+  }
+}

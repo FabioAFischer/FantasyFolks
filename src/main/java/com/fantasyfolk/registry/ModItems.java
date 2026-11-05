@@ -12,6 +12,7 @@ import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.SpawnEggItem;
 
 import com.fantasyfolk.FantasyFolk;
+import com.fantasyfolk.item.CommunityLedgerItem;
 import com.fantasyfolk.registry.ModBlocks;
 
 /**
@@ -22,6 +23,8 @@ public final class ModItems {
 			ResourceKey.create(Registries.ITEM, FantasyFolk.id("goblin_spawn_egg"));
 	private static final ResourceKey<Item> COMMUNITY_MARKER_KEY =
 			ResourceKey.create(Registries.ITEM, FantasyFolk.id("community_marker"));
+	private static final ResourceKey<Item> COMMUNITY_LEDGER_KEY =
+			ResourceKey.create(Registries.ITEM, FantasyFolk.id("community_ledger"));
 
 	public static final Item COMMUNITY_MARKER = Registry.register(
 			BuiltInRegistries.ITEM,
@@ -37,12 +40,23 @@ public final class ModItems {
 					.spawnEgg(ModEntities.GOBLIN))
 	);
 
+	public static final Item COMMUNITY_LEDGER = Registry.register(
+			BuiltInRegistries.ITEM,
+			COMMUNITY_LEDGER_KEY,
+			new CommunityLedgerItem(new Item.Properties()
+					.stacksTo(1)
+					.setId(COMMUNITY_LEDGER_KEY))
+	);
+
 	private ModItems() {
 	}
 
 	public static void initialize() {
 		CreativeModeTabEvents.modifyOutputEvent(CreativeModeTabs.FUNCTIONAL_BLOCKS)
-				.register(creativeTab -> creativeTab.accept(COMMUNITY_MARKER));
+				.register(creativeTab -> {
+					creativeTab.accept(COMMUNITY_MARKER);
+					creativeTab.accept(COMMUNITY_LEDGER);
+				});
 		CreativeModeTabEvents.modifyOutputEvent(CreativeModeTabs.SPAWN_EGGS)
 				.register(creativeTab -> creativeTab.accept(GOBLIN_SPAWN_EGG));
 	}

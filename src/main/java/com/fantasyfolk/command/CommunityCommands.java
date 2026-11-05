@@ -16,9 +16,9 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 
 import com.fantasyfolk.community.Community;
+import com.fantasyfolk.community.CommunityHolder;
 import com.fantasyfolk.community.CommunityManager;
 import com.fantasyfolk.community.CommunityPermissions;
-import com.fantasyfolk.entity.Goblin;
 
 import java.util.UUID;
 
@@ -90,8 +90,8 @@ public final class CommunityCommands {
 	private static int link(CommandContext<CommandSourceStack> context) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
 		CommandSourceStack source = context.getSource();
 		Entity entity = EntityArgument.getEntity(context, "entity");
-		if (!(entity instanceof Goblin)) {
-			source.sendFailure(Component.literal("A entidade precisa ser um habitante do Fantasy Folk, atualmente um Goblin."));
+		if (!(entity instanceof CommunityHolder)) {
+			source.sendFailure(Component.literal("A entidade não suporta vínculos de comunidade."));
 			return 0;
 		}
 		if (!CommunityPermissions.canPerformPlayerAction(source.getPlayer())) {
@@ -103,7 +103,7 @@ public final class CommunityCommands {
 		CommunityManager.LinkResult result = CommunityManager.linkMember(
 				entity.level() instanceof ServerLevel serverLevel ? serverLevel : source.getLevel(),
 				communityId,
-				entity.getUUID()
+				entity
 		);
 		if (result == CommunityManager.LinkResult.LINKED) {
 			source.sendSuccess(() -> Component.literal("Entidade vinculada à comunidade " + communityId + "."), true);
@@ -117,8 +117,8 @@ public final class CommunityCommands {
 	private static int unlink(CommandContext<CommandSourceStack> context) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
 		CommandSourceStack source = context.getSource();
 		Entity entity = EntityArgument.getEntity(context, "entity");
-		if (!(entity instanceof Goblin)) {
-			source.sendFailure(Component.literal("A entidade precisa ser um habitante do Fantasy Folk, atualmente um Goblin."));
+		if (!(entity instanceof CommunityHolder)) {
+			source.sendFailure(Component.literal("A entidade não suporta vínculos de comunidade."));
 			return 0;
 		}
 
@@ -158,6 +158,8 @@ public final class CommunityCommands {
 			case COMMUNITY_INACTIVE -> "A comunidade está INACTIVE e não aceita novos habitantes.";
 			case ALREADY_MEMBER -> "A entidade já pertence a esta comunidade.";
 			case ALREADY_LINKED -> "A entidade já está vinculada a outra comunidade.";
+			case OUTSIDE_TERRITORY -> "A entidade está fora do território da comunidade.";
+			case UNSUPPORTED_ENTITY -> "A entidade não suporta vínculos de comunidade.";
 			case LINKED -> "Entidade vinculada.";
 		};
 	}

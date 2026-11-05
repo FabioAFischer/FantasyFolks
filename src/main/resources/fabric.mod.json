@@ -1,0 +1,27 @@
+{
+	"schemaVersion": 1,
+	"id": "fantasyfolk",
+	"version": "${version}",
+	"name": "Fantasy Folk",
+	"description": "Foundation for a Fabric mod adding fantasy folk to Minecraft.",
+	"authors": [
+		"Fantasy Folk Team"
+	],
+	"license": "CC0-1.0",
+	"icon": "assets/fantasyfolk/icon.png",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"com.fantasyfolk.FantasyFolk"
+		],
+		"client": [
+			"com.fantasyfolk.client.FantasyFolkClient"
+		]
+	},
+	"depends": {
+		"fabricloader": ">=0.20.1",
+		"minecraft": "~26.3",
+		"java": ">=25",
+		"fabric-api": "*"
+	}
+}

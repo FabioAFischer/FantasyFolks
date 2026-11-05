@@ -1,0 +1,19 @@
+// Development-only probe. Does not change the mod's source sets or outputs.
+allprojects {
+    afterEvaluate {
+        tasks.register('exportPiglinUv', JavaExec) {
+            classpath = sourceSets.client.runtimeClasspath
+            executable = new File(System.getProperty('java.home'), 'bin/java').absolutePath
+            mainClass = file('assets-dev/goblin/tools/ExportPiglinUv.java').absolutePath
+            args file('assets-dev/goblin').absolutePath,
+                    new File(gradle.gradleUserHomeDir, 'caches/fabric-loom/26.3/minecraft-client.jar').absolutePath
+            jvmArgs '-Djava.awt.headless=true'
+        }
+        tasks.register('prepareGoblinUv', JavaExec) {
+            classpath = sourceSets.client.runtimeClasspath
+            executable = new File(System.getProperty('java.home'), 'bin/java').absolutePath
+            mainClass = file('assets-dev/goblin/tools/PrepareUvAssets.java').absolutePath
+            jvmArgs '-Djava.awt.headless=true'
+        }
+    }
+}

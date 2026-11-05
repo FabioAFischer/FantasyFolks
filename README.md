@@ -2,9 +2,9 @@
 
 Esqueleto inicial de um mod para Minecraft Java Edition 26.3 usando Fabric.
 
-O projeto contém o Goblin v0.2, a infraestrutura de comunidades v0.3 e o sistema
-de profissões por equipamentos v0.4; anões, draconatos e tieflings ainda não
-foram implementados.
+O projeto contém o Goblin v0.2, a infraestrutura de comunidades v0.3, o sistema
+de profissões por equipamentos v0.4, o gerenciamento comunitário v0.4.1 e a IA
+do Guarda v0.5; anões, draconatos e tieflings ainda não foram implementados.
 
 ## Ambiente
 
@@ -190,14 +190,81 @@ empilháveis antes de oferecer o novo equipamento.
   é consultada (`info`/`list`) e o chunk do centro está carregado; não há varredura
   contínua do mundo.
 - Não há recuperação ou transferência automática de centros inativos.
-- Profissões não alteram IA, comércio ou coleta; o NPC apenas exibe o equipamento
-  e mantém o estado persistente.
+- A profissão Caçador ainda não altera IA, comércio ou coleta; somente o Guarda
+  possui comportamento profissional nesta versão.
 - Apenas Guarda e Caçador estão implementados; as outras profissões previstas
   são somente pontos de extensão da tabela de equipamentos.
 - A interação atual é um fluxo de mensagens, sem interface gráfica.
 - O teste manual completo requer um cliente Minecraft; os testes automatizados
   cobrem registro/mapeamento disponível no ambiente de teste e persistência de
   componentes.
+
+## Goblin Guarda — v0.5
+
+Um Goblin com a profissão `fantasyfolk:guard`, uma espada equipada e vínculo com
+uma comunidade `ACTIVE` patrulha e defende o território no servidor. Para
+atribuir a profissão, selecione a comunidade, vincule o Goblin, segure uma espada,
+agache-se e interaja duas vezes em até 10 segundos.
+
+### Patrulha e retorno
+
+Sem ameaças, o Guarda escolhe destinos navegáveis em até 24 blocos horizontais
+do centro, ou no raio real da comunidade quando ele for menor. O destino e o
+caminho precisam permanecer dentro do território. A navegação vanilla rejeita
+água, blocos sólidos, posições com penalidade e caminhos inalcançáveis; cada
+tentativa tem tempo limitado. Se o Guarda sair do território, ele procura um
+caminho de volta em etapas, sem teletransporte ou carregamento artificial de
+chunks.
+
+### Ameaças e defesa
+
+O Guarda procura, a cada intervalo limitado, ameaças carregadas em até 12 blocos:
+
+- zumbis, husks, afogados e zombie villagers;
+- esqueletos, strays, bogged e demais variantes de `AbstractSkeleton`;
+- pillagers.
+
+Zombified Piglins, Endermen, Creepers, jogadores, villagers, golens e Goblins
+aliados não são atacados proativamente. Aranhas só são consideradas quando
+atacam o próprio Guarda, um habitante Fantasy Folk vinculado à mesma comunidade
+ou um villager protegido dentro do território.
+
+O combate reutiliza o Goal corpo a corpo vanilla, respeita o intervalo de ataque,
+os atributos e encantamentos da espada e aplica desgaste ao item realmente
+equipado. O dano base do Goblin permanece em 4 pontos antes dos modificadores do
+equipamento. A perseguição termina quando o alvo morre, sai do território, fica
+inalcançável, some, excede o tempo de combate ou quando a comunidade deixa de ser
+operacional. Depois disso, o Guarda retorna e retoma a patrulha.
+
+### Interromper a atividade
+
+Trocar a espada por um arco transforma o Goblin em Caçador e cancela imediatamente
+alvo, navegação e agressividade de Guarda. Remover a profissão produz o mesmo
+efeito. O vínculo comunitário é preservado. Destruir o marco ou remover o vínculo
+suspende a IA profissional, mas mantém profissão e equipamento salvos. Reatribuir
+Guarda reativa os mesmos Goals, sem registros duplicados.
+
+### Limitações conhecidas
+
+- A qualidade da patrulha depende do pathfinder vanilla; em terreno Amplified o
+  Guarda pode aguardar e tentar outro destino quando não encontra rota segura.
+- A defesa observa apenas entidades carregadas e próximas; não existe varredura
+  global, carregamento de chunks ou coordenação tática entre Guardas.
+- Creepers são ignorados nesta versão para evitar explosões dentro da comunidade.
+- Não há proteção contra jogadores, guerras entre comunidades ou IA de Caçador.
+
+### Teste dentro do jogo
+
+```text
+1. Crie e selecione uma comunidade com o Registro Comunitário.
+2. Invoque um Goblin, vincule-o e atribua uma espada.
+3. Observe a patrulha e invoque um zumbi a menos de 12 blocos.
+4. Leve o alvo para fora do território e confirme o retorno do Guarda.
+5. Faça um hostil atacar outro Goblin vinculado ou um villager dentro da área.
+6. Teste Creeper, Enderman, aliados e golem para confirmar que são ignorados.
+7. Troque a espada por arco e depois remova a profissão; alvo e patrulha devem parar.
+8. Quebre o marco, salve/reabra o mundo e teste novamente em terreno montanhoso.
+```
 
 ## Estrutura inicial
 

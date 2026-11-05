@@ -10,6 +10,7 @@ import net.minecraft.world.entity.monster.piglin.PiglinArmPose;
 
 import com.fantasyfolk.FantasyFolk;
 import com.fantasyfolk.entity.Goblin;
+import com.fantasyfolk.profession.ProfessionEquipment;
 
 /**
  * Goblin renderer using Goblin-owned geometry and adult Piglin animations.
@@ -32,7 +33,9 @@ public final class GoblinRenderer extends HumanoidMobRenderer<Goblin, PiglinRend
 	@Override
 	public void extractRenderState(Goblin goblin, PiglinRenderState state, float partialTick) {
 		super.extractRenderState(goblin, state, partialTick);
-		state.armPose = PiglinArmPose.DEFAULT;
+		state.armPose = goblin.isAggressive() && ProfessionEquipment.isSword(goblin.getMainHandItem())
+				? PiglinArmPose.ATTACKING_WITH_MELEE_WEAPON
+				: PiglinArmPose.DEFAULT;
 		state.isBrute = false;
 		state.isConverting = false;
 	}

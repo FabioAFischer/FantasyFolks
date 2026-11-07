@@ -10,6 +10,8 @@ import net.minecraft.world.entity.monster.piglin.PiglinArmPose;
 
 import com.fantasyfolk.FantasyFolk;
 import com.fantasyfolk.entity.Goblin;
+import com.fantasyfolk.ai.hunter.HunterRuntime;
+import com.fantasyfolk.profession.ProfessionEquipment;
 
 /**
  * Goblin renderer using Goblin-owned geometry and adult Piglin animations.
@@ -32,7 +34,17 @@ public final class GoblinRenderer extends HumanoidMobRenderer<Goblin, PiglinRend
 	@Override
 	public void extractRenderState(Goblin goblin, PiglinRenderState state, float partialTick) {
 		super.extractRenderState(goblin, state, partialTick);
-		state.armPose = PiglinArmPose.DEFAULT;
+		if (HunterRuntime.isHunterProfession(goblin.getProfessionId())
+				&& goblin.isUsingItem()) {
+			state.armPose = PiglinArmPose.CROSSBOW_CHARGE;
+			state.maxCrossbowChageDuration = 20.0F;
+		} else if (HunterRuntime.isHunterProfession(goblin.getProfessionId()) && goblin.isAggressive()) {
+			state.armPose = PiglinArmPose.CROSSBOW_HOLD;
+		} else {
+			state.armPose = goblin.isAggressive() && ProfessionEquipment.isSword(goblin.getMainHandItem())
+					? PiglinArmPose.ATTACKING_WITH_MELEE_WEAPON
+					: PiglinArmPose.DEFAULT;
+		}
 		state.isBrute = false;
 		state.isConverting = false;
 	}

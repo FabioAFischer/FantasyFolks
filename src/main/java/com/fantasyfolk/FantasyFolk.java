@@ -10,6 +10,7 @@ import com.fantasyfolk.registry.ModItems;
 import com.fantasyfolk.command.CommunityCommands;
 import com.fantasyfolk.community.CommunityEvents;
 import com.fantasyfolk.community.ConfirmationService;
+import com.fantasyfolk.inventory.WorkInventoryInteractionHandler;
 import com.fantasyfolk.profession.ProfessionInteractionHandler;
 import com.fantasyfolk.profession.ProfessionRegistry;
 
@@ -36,6 +37,7 @@ public final class FantasyFolk implements ModInitializer {
 		ConfirmationService.initialize();
 		CommunityCommands.initialize();
 		ProfessionInteractionHandler.initialize();
+		WorkInventoryInteractionHandler.initialize();
 		LOGGER.info("Fantasy Folk initialized.");
 	}
 

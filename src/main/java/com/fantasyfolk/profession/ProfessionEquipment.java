@@ -24,4 +24,8 @@ public final class ProfessionEquipment {
 	public static boolean isBow(ItemStack stack) {
 		return stack.getItem() == Items.BOW;
 	}
+
+	public static boolean isValidBow(ItemStack stack) {
+		return isBow(stack) && (!stack.isDamageableItem() || !stack.nextDamageWillBreak());
+	}
 }

@@ -18,10 +18,14 @@ import net.minecraft.world.level.block.Blocks;
 
 import com.fantasyfolk.block.CommunityMarkerBlock;
 import com.fantasyfolk.community.Community;
+import com.fantasyfolk.community.CommunityState;
 import com.fantasyfolk.community.CommunityHolder;
 import com.fantasyfolk.community.CommunityManager;
 import com.fantasyfolk.community.CommunityPermissions;
 import com.fantasyfolk.community.ConfirmationService;
+import com.fantasyfolk.community.HuntingAreaInteractionHandler;
+import com.fantasyfolk.community.HuntingAreaManager;
+import com.fantasyfolk.community.HuntingAreaState;
 import com.fantasyfolk.world.VillageDetector;
 
 /** Reusable in-game ledger for selecting, inspecting and managing communities. */
@@ -33,7 +37,7 @@ public final class CommunityLedgerItem extends Item {
 	@Override
 	public InteractionResult useOn(UseOnContext context) {
 		if (context.getLevel().isClientSide()) {
-			return InteractionResult.SUCCESS;
+			return InteractionResult.PASS;
 		}
 		if (!(context.getLevel() instanceof ServerLevel level)
 				|| !(context.getPlayer() instanceof ServerPlayer player)) {
@@ -41,6 +45,10 @@ public final class CommunityLedgerItem extends Item {
 		}
 
 		BlockPos clickedPos = context.getClickedPos();
+		if (HuntingAreaInteractionHandler.isSupportedTerrain(level, clickedPos)
+				&& player.isShiftKeyDown()) {
+			return HuntingAreaInteractionHandler.handle(level, player, clickedPos, context.getItemInHand());
+		}
 		if (level.getBlockState(clickedPos).is(CommunityMarkerBlock.INSTANCE)) {
 			return selectRegisteredCommunity(level, player, clickedPos, context.getItemInHand());
 		}
@@ -62,6 +70,15 @@ public final class CommunityLedgerItem extends Item {
 		ItemStack stack = serverPlayer.getItemInHand(hand);
 		Optional<CommunityLedgerData.Selection> selection = CommunityLedgerData.read(stack);
 		if (selection.isEmpty()) {
+			Optional<Community> nearby = CommunityManager.findNearby(
+					serverLevel.getServer(),
+					serverLevel.dimension(),
+					serverPlayer.blockPosition()
+			).filter(community -> community.state() == CommunityState.ACTIVE);
+			if (nearby.isPresent()) {
+				select(serverPlayer, stack, nearby.orElseThrow());
+				return InteractionResult.SUCCESS_SERVER;
+			}
 			serverPlayer.sendSystemMessage(Component.translatable("message.fantasyfolk.ledger.no_selection"));
 			return InteractionResult.SUCCESS_SERVER;
 		}
@@ -290,7 +307,14 @@ public final class CommunityLedgerItem extends Item {
 				community.center().getY(),
 				community.center().getZ(),
 				community.radius(),
-				community.members().size()
+			community.members().size(),
+			HuntingAreaManager.find(player.level().getServer(), community.id())
+					.filter(area -> area.state() == HuntingAreaState.ACTIVE)
+					.map(area -> Component.translatable(
+							"message.fantasyfolk.hunting_area.status.configured",
+							area.center().getX(), area.center().getY(), area.center().getZ(), area.radius()
+					))
+					.orElseGet(() -> Component.translatable("message.fantasyfolk.hunting_area.status.not_configured"))
 		));
 	}
 

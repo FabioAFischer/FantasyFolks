@@ -3,8 +3,9 @@
 Esqueleto inicial de um mod para Minecraft Java Edition 26.3 usando Fabric.
 
 O projeto contém o Goblin v0.2, a infraestrutura de comunidades v0.3, o sistema
-de profissões por equipamentos v0.4, o gerenciamento comunitário v0.4.1 e a IA
-do Guarda v0.5; anões, draconatos e tieflings ainda não foram implementados.
+de profissões por equipamentos v0.4, o gerenciamento comunitário v0.4.1, a IA
+do Guarda v0.5, os depósitos comunitários v0.6 e o Caçador v0.7; anões,
+draconatos e tieflings ainda não foram implementados.
 
 ## Ambiente
 
@@ -117,9 +118,9 @@ mesmo manager, a mesma confirmação e as mesmas transações de inventário.
 | `fantasyfolk:guard` | Guarda | espadas vanilla (`#minecraft:swords`) | mão principal |
 | `fantasyfolk:hunter` | Caçador | arco vanilla (`minecraft:bow`) | mão principal |
 
-Não há atribuição automática nem IA de profissão nesta versão. A tabela de
-mapeamento fica isolada para que picaretas, machados, enxadas e varas de pesca
-possam ser adicionados depois sem alterar as entidades.
+Não há atribuição automática. A tabela de mapeamento fica isolada para que
+picaretas, machados, enxadas e varas de pesca possam ser adicionados depois sem
+alterar as entidades.
 
 ### Atribuir, trocar e remover
 
@@ -190,8 +191,6 @@ empilháveis antes de oferecer o novo equipamento.
   é consultada (`info`/`list`) e o chunk do centro está carregado; não há varredura
   contínua do mundo.
 - Não há recuperação ou transferência automática de centros inativos.
-- A profissão Caçador ainda não altera IA, comércio ou coleta; somente o Guarda
-  possui comportamento profissional nesta versão.
 - Apenas Guarda e Caçador estão implementados; as outras profissões previstas
   são somente pontos de extensão da tabela de equipamentos.
 - A interação atual é um fluxo de mensagens, sem interface gráfica.
@@ -264,6 +263,182 @@ Guarda reativa os mesmos Goals, sem registros duplicados.
 6. Teste Creeper, Enderman, aliados e golem para confirmar que são ignorados.
 7. Troque a espada por arco e depois remova a profissão; alvo e patrulha devem parar.
 8. Quebre o marco, salve/reabra o mundo e teste novamente em terreno montanhoso.
+```
+
+## Sistema de Depósitos Comunitários — v0.6
+
+Depósitos são registros persistentes de baús vanilla ou barris vanilla. O
+registro guarda apenas a comunidade, a dimensão, as coordenadas, o tipo e o
+estado do recipiente; os itens permanecem exclusivamente no inventário vanilla
+do bloco. Baús do End, caixas de shulker, fornalhas, funis e outros blocos não
+são aceitos.
+
+### Registrar, consultar e remover
+
+1. Use o Registro Comunitário em um Marco de Comunidade ou sino para selecionar
+   uma comunidade. Como atalho, use o Registro no ar dentro do território: ele
+   selecionará a comunidade ativa mais próxima. Se o Registro não tiver seleção,
+   um baú ou barril dentro do território também pode inferir essa comunidade no
+   primeiro contato.
+2. Aproxime-se de um baú ou barril dentro do território e interaja com ele
+   segurando o Registro. O recipiente não será aberto; a primeira interação
+   arma a confirmação.
+3. Interaja novamente, sem precisar agachar, em até 10 segundos para confirmar o cadastro; após o
+   sucesso, a comunidade fica selecionada no Registro.
+4. Use o Registro novamente sem agachar para consultar tipo, estado, espaços
+   ocupados e capacidade real. Um baú duplo aparece como um depósito único com
+   capacidade conjunta.
+5. Para remover o vínculo, agache e interaja duas vezes com o depósito usando o
+   Registro da comunidade correspondente. O Shift é exigido apenas para remoção.
+
+A remoção não destrói o recipiente nem altera os itens. O cadastro verifica no
+servidor a comunidade selecionada, sua dimensão, estado, território, permissões
+e propriedade do recipiente. Sem o Registro, baús e barris mantêm a abertura e o
+comportamento vanilla normais. Nenhum comando administrativo é necessário para
+esses fluxos.
+
+### Inventário de trabalho e entrega
+
+Cada Goblin possui nove espaços de inventário de trabalho, separados da espada
+ou arco da profissão. Segure um item comum na mão principal e interaja sem
+agachar com um Goblin vinculado a uma comunidade ativa. Uma unidade só é
+removida do jogador quando cabe no inventário do Goblin. Espadas, arcos,
+Registro Comunitário e alimentos não são consumidos por essa interação.
+
+O inventário de trabalho é salvo junto com a entidade, sobrevive a troca de
+profissão, desvinculação, reinicialização e recarga do chunk. Na morte do
+Goblin, seus itens de trabalho são descartados no mundo uma única vez; o
+equipamento profissional continua obedecendo às regras existentes.
+
+### Transporte automático
+
+Quando houver itens de trabalho, comunidade ativa e um depósito registrado com
+espaço, o Goblin escolhe um recipiente acessível, caminha até ele usando a
+navegação vanilla e transfere apenas a quantidade realmente aceita. Não há
+teletransporte, carregamento artificial de chunks, retirada de itens dos
+depósitos ou descarte automático quando todos estão cheios. Se um depósito
+ficar inválido, for destruído ou estiver cheio, outro depósito pode ser tentado;
+caso nenhum esteja disponível, os itens ficam no inventário do Goblin.
+
+Para o Guarda, defesa e combate têm prioridade sobre a entrega. Após a ameaça
+ser resolvida, a rotina de depósito pode ser retomada. Comunidades inativas
+preservam seus registros e conteúdos, mas suspendem o transporte automático.
+
+### Limitações conhecidas
+
+- A reconciliação de um baú duplo usa as posições e o estado atual dos dois
+  blocos; se uma metade for removida, o registro acompanha a metade restante.
+- Um registro inválido é preservado para diagnóstico e não é reativado
+  automaticamente; um novo recipiente precisa ser cadastrado novamente.
+- A navegação depende do pathfinder vanilla e pode aguardar em terreno
+  Amplified ou diante de um depósito inacessível.
+- A entrega manual é propositalmente simples; não existe atividade de
+  Minerador, Lenhador ou Agricultor.
+- A capacidade exibida é a quantidade de slots, não a capacidade efetiva de uma
+  pilha específica; a transferência real considera pilhas, componentes e
+  durabilidade.
+
+### Teste manual A–O
+
+```text
+A. Crie uma comunidade, selecione-a no Registro e cadastre um baú sem comandos.
+B. Repita o cadastro usando um barril.
+C. Consulte o depósito e remova o vínculo; confirme que os itens continuam lá.
+D. Vincule um Goblin e entregue sticks ou outro item comum sem agachar.
+E. Confirme que uma unidade sai do jogador apenas quando o inventário aceita.
+F. Observe o Goblin caminhando até o depósito e armazenando no bloco real.
+G. Encha um depósito e confirme que os itens restantes ficam no Goblin.
+H. Cadastre um segundo depósito e confirme a tentativa alternativa.
+I. Salve, reabra e recarregue o chunk; valide depósitos e inventário de trabalho.
+J. Desative a comunidade e confirme que os registros permanecem sem entregas.
+K. Destrua um depósito e confirme que nenhum Goblin tenta acessar o bloco.
+L. Durante uma entrega, aproxime um zumbi e confirme a prioridade do Guarda.
+M. Teste dois Goblins ou jogadores usando o mesmo depósito sem duplicação.
+N. Registre um baú duplo, altere sua configuração e confirme a reconciliação.
+O. Repita o fluxo completo em um servidor dedicado sem comandos administrativos.
+```
+
+## Goblin Caçador — v0.7
+
+O Caçador só trabalha quando o Goblin possui a profissão `fantasyfolk:hunter`,
+um arco válido na mão principal, vínculo com uma comunidade `ACTIVE` na mesma
+dimensão e uma área de caça ativa. Sem área configurada ou sem flechas, ele
+mantém a profissão e o equipamento, mas não caça.
+
+### Configurar a área pelo Registro
+
+1. Selecione a comunidade no Registro Comunitário usando um Marco, sino ou o
+   fluxo de seleção já existente.
+2. Vá até um bloco comum de grama, terra ou pedra dentro do território.
+3. Agache e use o Registro; repita a interação no mesmo bloco em até 10
+   segundos para confirmar.
+4. Use o Registro novamente no novo ponto para mover a área. No centro atual,
+   o mesmo fluxo de confirmação remove a área.
+
+Cada comunidade possui no máximo uma área persistente, com raio operacional de
+12 blocos horizontais. A área efetiva é a interseção desse círculo com o
+território da comunidade. O Registro informa se a área está configurada e suas
+coordenadas; nenhuma dessas operações requer comandos administrativos.
+
+### Caça, segurança e limites
+
+O allow-list inicial contém vacas, porcos, galinhas, ovelhas e coelhos. O
+Caçador exclui filhotes, animais nomeados, domesticados, presos por coleira,
+montados/transportados, animais em cercados reconhecíveis e habitantes de
+outros sistemas comunitários. A seleção e as consultas consideram somente
+entidades carregadas. A política também exige pelo menos dois adultos elegíveis
+da espécie na área antes de selecionar uma presa.
+
+O Goblin usa navegação vanilla limitada, permanece no círculo efetivo, mantém
+linha de visão e dispara uma flecha real. O arco equipado é o `ItemStack` real:
+encantamentos, componentes e durabilidade são preservados. Cada tiro consome
+uma flecha entregue no inventário de trabalho, e as flechas ficam reservadas
+para a profissão em vez de serem depositadas como loot. A animação usa o estado
+de carga de braços compatível com o modelo Piglin/Goblin existente, sem mudar
+geometria, UV ou textura.
+
+Cada Caçador pode abater no máximo quatro animais por dia do Minecraft. Após a
+morte, os drops vanilla reais são rastreados de modo conservador pela posição e
+janela temporal do abate, recolhidos no inventário de trabalho de nove espaços
+e enviados aos depósitos já registrados. Itens que não cabem permanecem no
+mundo ou no Goblin; não são recriados nem descartados automaticamente.
+
+Monstros próximos interrompem a rotina e provocam uma retirada curta, sem
+transformar o Caçador em Guarda. Troca ou remoção da profissão cancela alvo,
+disparo, mira e navegação imediatamente. O contador diário, o dia de referência,
+a área, o equipamento, as flechas e o inventário de trabalho sobrevivem a
+salvar/reabrir o mundo.
+
+### Limitações conhecidas
+
+- A proteção contra cercados é heurística: reconhece concentrações de cercas,
+  portões e muros próximos, mas não pretende classificar todas as fazendas.
+- A atribuição de drops é deliberadamente conservadora; drops vanilla fora da
+  lista conhecida ou itens que se fundem com entidades pré-existentes podem não
+  ser coletados, evitando recolher itens de jogadores.
+- A proteção da trajetória bloqueia entidades vivas encontradas entre o arco e
+  o alvo, mas a física posterior da flecha ainda pode sofrer acidentes fora da
+  linha verificada.
+- O pathfinder pode falhar ou esperar em terreno Amplified, desníveis extremos
+  ou destinos inacessíveis; não há teletransporte nem carregamento artificial de
+  chunks.
+- Não há reabastecimento automático de flechas a partir dos depósitos.
+
+### Teste manual
+
+```text
+1. Crie e selecione uma comunidade, vincule um Goblin e atribua um arco.
+2. Configure uma área de caça em terreno comum e consulte o Registro para
+   confirmar coordenadas e raio.
+3. Entregue flechas pelo inventário de trabalho e coloque pelo menos dois
+   adultos de uma espécie elegível na área.
+4. Observe a aproximação, a animação de mira, a flecha real, os drops e a
+   entrega no depósito cadastrado.
+5. Teste filhote, animal nomeado, coleira, cercado, jogador na trajetória e um
+   monstro próximo.
+6. Gaste quatro abates, salve/reabra e confirme o bloqueio até o próximo dia.
+7. Mova/remova a área, troque para Guarda e remova a profissão; a caça deve
+   parar sem perder arco, flechas ou loot.
 ```
 
 ## Estrutura inicial

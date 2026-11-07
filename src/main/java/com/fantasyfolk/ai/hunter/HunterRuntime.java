@@ -1,6 +1,7 @@
 package com.fantasyfolk.ai.hunter;
 
 import java.util.HashSet;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -17,6 +18,8 @@ import net.minecraft.world.item.Items;
 import net.minecraft.tags.ItemTags;
 import net.minecraft.world.phys.AABB;
 
+import com.fantasyfolk.FantasyFolk;
+import com.fantasyfolk.ai.CommunityDepositGoal;
 import com.fantasyfolk.community.Community;
 import com.fantasyfolk.community.CommunityManager;
 import com.fantasyfolk.community.CommunityState;
@@ -42,6 +45,7 @@ public final class HunterRuntime<T extends PathfinderMob & ProfessionHolder & Wo
 	private static final int ACTIVE_REFRESH_TICKS = 20;
 	private static final int MISSING_REFRESH_TICKS = 100;
 	private static final int LOOT_WAIT_TICKS = 100;
+	private static final int SHOT_CONTEXT_TICKS = 100;
 	private static final int REJECTED_TARGET_TICKS = 100;
 
 	private final T mob;
@@ -53,9 +57,13 @@ public final class HunterRuntime<T extends PathfinderMob & ProfessionHolder & Wo
 	private UUID rejectedTargetId;
 	private int rejectedTargetUntilTick;
 	private UUID shotTargetId;
-	private BlockPos shotPosition;
 	private Set<UUID> shotItemBaseline = Set.of();
+	private int shotContextUntilTick;
 	private PendingLoot pendingLoot;
+	private boolean lootScanLogged;
+	private int depositResolutionTick = Integer.MIN_VALUE;
+	private boolean reachableDeposit;
+	private String lastWorkDiagnostic;
 
 	public HunterRuntime(T mob) {
 		this.mob = mob;
@@ -91,7 +99,23 @@ public final class HunterRuntime<T extends PathfinderMob & ProfessionHolder & Wo
 	}
 
 	public boolean canWork() {
-		if (area().isEmpty() || isInDanger() || !hasAmmunition() || !hasWorkCapacity()) {
+		expireShotContext();
+		Optional<HuntingAreaContext> huntingArea = area();
+		boolean pending = hasPendingLoot();
+		boolean depositable = hasDepositableWorkItems();
+		boolean depositReachable = depositable && hasReachableDeposit();
+		boolean danger = isInDanger();
+		boolean ammunition = hasAmmunition();
+		boolean capacity = hasWorkCapacity();
+		String blockedBy = pending ? "pending-loot"
+				: depositReachable ? "reachable-deposit"
+				: huntingArea.isEmpty() ? "no-hunting-area"
+				: danger ? "danger"
+				: !ammunition ? "no-arrows"
+				: !capacity ? "work-inventory-full"
+				: null;
+		logWorkDiagnostic(blockedBy, huntingArea.isPresent(), ammunition, capacity, depositable, depositReachable);
+		if (blockedBy != null) {
 			return false;
 		}
 		ServerLevel level = (ServerLevel) mob.level();
@@ -192,12 +216,17 @@ public final class HunterRuntime<T extends PathfinderMob & ProfessionHolder & Wo
 		if (!(mob.level() instanceof ServerLevel level)) {
 			return;
 		}
+		if (!target.getUUID().equals(shotTargetId)) {
+			shotItemBaseline = Set.of();
+		}
 		shotTargetId = target.getUUID();
-		shotPosition = target.blockPosition().immutable();
+		shotContextUntilTick = mob.tickCount + SHOT_CONTEXT_TICKS;
 		Set<UUID> baseline = new HashSet<>();
+		baseline.addAll(shotItemBaseline);
+		BlockPos currentTargetPosition = target.blockPosition().immutable();
 		for (Entity entity : level.getEntities(
 				mob,
-				new AABB(shotPosition).inflate(LOOT_SEARCH_RADIUS),
+				new AABB(currentTargetPosition).inflate(LOOT_SEARCH_RADIUS),
 				entity -> entity instanceof ItemEntity
 		)) {
 			baseline.add(entity.getUUID());
@@ -206,15 +235,51 @@ public final class HunterRuntime<T extends PathfinderMob & ProfessionHolder & Wo
 	}
 
 	public void completeShot(LivingEntity target) {
+		expireShotContext();
 		if (shotTargetId == null || !shotTargetId.equals(target.getUUID())) {
 			return;
 		}
-		if (!target.isAlive() && wasKilledByHunter(target)) {
-			recordKill(shotPosition == null ? target.blockPosition() : shotPosition);
+		/*
+		 * Death attribution is handled by AFTER_KILLED_OTHER_ENTITY.  In
+		 * particular, do not clear a live target here: an arrow can still be in
+		 * flight after the combat Goal or TargetGoal has stopped.
+		 */
+		if (!target.isAlive()) {
+			clearShotContext();
 		}
-		shotTargetId = null;
-		shotPosition = null;
-		shotItemBaseline = Set.of();
+	}
+
+	/** Called once by Fabric after this entity has actually killed another entity. */
+	public void onHunterKill(ServerLevel level, LivingEntity target, DamageSource source) {
+		expireShotContext();
+		if (!isHunterProfession()
+				|| level != mob.level()
+				|| shotTargetId == null
+				|| !shotTargetId.equals(target.getUUID())
+				|| !wasKilledByHunter(target, source)
+				|| !HunterTargetPolicy.isAllowedSpecies(target)) {
+			return;
+		}
+
+		HuntingAreaContext context = area().orElse(null);
+		BlockPos deathPosition = target.blockPosition().immutable();
+		if (context == null || !context.dimension().equals(level.dimension()) || !context.contains(deathPosition)) {
+			clearShotContext();
+			return;
+		}
+
+		/*
+		 * Do not scan the death position here. This callback can run after
+		 * vanilla has spawned the drops; adding those entities now would make
+		 * the real drops part of the baseline and make them uncollectable.
+		 */
+		boolean recorded = recordKill(deathPosition, shotItemBaseline);
+		FantasyFolk.LOGGER.debug(
+				"Hunter diagnostics: pending loot hunter={} target={} recorded={} deathPosition={} baselineItems={} expiresAt={}",
+				mob.getUUID(), target.getUUID(), recorded, deathPosition, shotItemBaseline.size(),
+				recorded ? mob.tickCount + LOOT_WAIT_TICKS : -1
+		);
+		clearShotContext();
 	}
 
 	public boolean hasPendingLoot() {
@@ -231,18 +296,37 @@ public final class HunterRuntime<T extends PathfinderMob & ProfessionHolder & Wo
 			return Optional.empty();
 		}
 		HuntingAreaContext context = area().orElseThrow();
-		return level.getEntities(
+		List<ItemEntity> nearbyItems = level.getEntities(
 				mob,
 				new AABB(pendingLoot.position()).inflate(LOOT_SEARCH_RADIUS),
-				entity -> entity instanceof ItemEntity item
-						&& item.isAlive()
+				entity -> entity instanceof ItemEntity
+		).stream().map(ItemEntity.class::cast).toList();
+		Optional<ItemEntity> candidate = nearbyItems.stream()
+				.filter(item -> item.isAlive()
 						&& !pendingLoot.baseline().contains(item.getUUID())
 						&& item.getAge() <= LOOT_WAIT_TICKS
 						&& context.contains(item.blockPosition())
-						&& isEligibleLoot(item)
-		).stream()
-				.map(ItemEntity.class::cast)
+						&& isEligibleLoot(item))
 				.min((first, second) -> Double.compare(mob.distanceToSqr(first), mob.distanceToSqr(second)));
+		if (!lootScanLogged) {
+			long newItems = nearbyItems.stream()
+					.filter(item -> !pendingLoot.baseline().contains(item.getUUID()))
+					.count();
+			long eligibleItems = nearbyItems.stream()
+					.filter(item -> item.isAlive()
+							&& !pendingLoot.baseline().contains(item.getUUID())
+							&& item.getAge() <= LOOT_WAIT_TICKS
+							&& context.contains(item.blockPosition())
+							&& isEligibleLoot(item))
+					.count();
+			FantasyFolk.LOGGER.debug(
+					"Hunter diagnostics: loot scan hunter={} position={} nearby={} new={} eligible={} candidate={} expiresAt={}",
+					mob.getUUID(), pendingLoot.position(), nearbyItems.size(), newItems, eligibleItems,
+					candidate.map(item -> item.getUUID().toString()).orElse("none"), pendingLoot.expiresAt()
+			);
+			lootScanLogged = true;
+		}
+		return candidate;
 	}
 
 	public int collect(ItemEntity item) {
@@ -252,17 +336,30 @@ public final class HunterRuntime<T extends PathfinderMob & ProfessionHolder & Wo
 		ItemStack stack = item.getItem();
 		int transferred = CommunityItemTransfer.transfer(stack, mob.getWorkInventory(), stack.count());
 		if (transferred > 0) {
+			pendingLoot = new PendingLoot(
+					pendingLoot.position(), pendingLoot.baseline(), pendingLoot.expiresAt(), true
+			);
 			if (stack.isEmpty()) {
 				item.discard();
 			} else {
 				item.setItem(stack);
 			}
+			FantasyFolk.LOGGER.debug(
+					"Hunter diagnostics: loot transfer hunter={} item={} transferred={} remaining={}",
+					mob.getUUID(), item.getUUID(), transferred, stack.count()
+			);
 		}
 		return transferred;
 	}
 
+	/** Returns true only after at least one real drop was transferred and none remains eligible. */
+	public boolean shouldFinishLootCollection() {
+		return hasPendingLoot() && pendingLoot.collectedAny() && findLootCandidate().isEmpty();
+	}
+
 	public void clearLoot() {
 		pendingLoot = null;
+		lootScanLogged = false;
 	}
 
 	public void rejectTarget(LivingEntity target) {
@@ -284,10 +381,11 @@ public final class HunterRuntime<T extends PathfinderMob & ProfessionHolder & Wo
 		resolvedTick = Integer.MIN_VALUE;
 		resolvedArea = null;
 		rejectedTargetId = null;
-		shotTargetId = null;
-		shotPosition = null;
-		shotItemBaseline = Set.of();
-		pendingLoot = null;
+		depositResolutionTick = Integer.MIN_VALUE;
+		reachableDeposit = false;
+		lastWorkDiagnostic = null;
+		clearShotContext();
+		clearLoot();
 		mob.setTarget(null);
 		mob.getNavigation().stop();
 		if (mob.isUsingItem()) {
@@ -348,23 +446,33 @@ public final class HunterRuntime<T extends PathfinderMob & ProfessionHolder & Wo
 		}
 	}
 
-	private void recordKill(BlockPos position) {
+	private boolean recordKill(BlockPos position, Set<UUID> baseline) {
 		if (!(mob.level() instanceof ServerLevel level)) {
-			return;
+			return false;
+		}
+		HuntingAreaContext context = area().orElse(null);
+		if (context == null || !context.contains(position)) {
+			return false;
 		}
 		prepareDay(level);
 		if (mob.getHunterDailyKills() >= DAILY_KILL_LIMIT) {
-			return;
+			return false;
 		}
 		mob.setHunterDailyKills(mob.getHunterDailyKills() + 1);
-		pendingLoot = new PendingLoot(position.immutable(), shotItemBaseline, mob.tickCount + LOOT_WAIT_TICKS);
+		pendingLoot = new PendingLoot(position.immutable(), Set.copyOf(baseline), mob.tickCount + LOOT_WAIT_TICKS, false);
+		lootScanLogged = false;
+		return true;
 	}
 
-	private boolean wasKilledByHunter(LivingEntity target) {
+	private boolean wasKilledByHunter(LivingEntity target, DamageSource eventSource) {
 		if (target.getLastHurtByMob() == mob) {
 			return true;
 		}
 		DamageSource source = target.getLastDamageSource();
+		return isFromHunter(source) || isFromHunter(eventSource);
+	}
+
+	private boolean isFromHunter(DamageSource source) {
 		if (source == null) {
 			return false;
 		}
@@ -376,6 +484,18 @@ public final class HunterRuntime<T extends PathfinderMob & ProfessionHolder & Wo
 				|| directEntity instanceof Projectile projectile && projectile.getOwner() == mob;
 	}
 
+	private void expireShotContext() {
+		if (shotTargetId != null && mob.tickCount > shotContextUntilTick) {
+			clearShotContext();
+		}
+	}
+
+	private void clearShotContext() {
+		shotTargetId = null;
+		shotItemBaseline = Set.of();
+		shotContextUntilTick = 0;
+	}
+
 	private ItemStack findArrowSupply() {
 		for (int slot = 0; slot < mob.getWorkInventory().getContainerSize(); slot++) {
 			ItemStack stack = mob.getWorkInventory().getItem(slot);
@@ -384,6 +504,52 @@ public final class HunterRuntime<T extends PathfinderMob & ProfessionHolder & Wo
 			}
 		}
 		return ItemStack.EMPTY;
+	}
+
+	private boolean hasDepositableWorkItems() {
+		for (int slot = 0; slot < mob.getWorkInventory().getContainerSize(); slot++) {
+			ItemStack stack = mob.getWorkInventory().getItem(slot);
+			if (!stack.isEmpty() && !stack.is(ItemTags.ARROWS) && mob.canDepositWorkItem(stack)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private boolean hasReachableDeposit() {
+		if (depositResolutionTick == mob.tickCount) {
+			return reachableDeposit;
+		}
+		depositResolutionTick = mob.tickCount;
+		reachableDeposit = CommunityDepositGoal.hasReachableDeposit(mob);
+		return reachableDeposit;
+	}
+
+	private void logWorkDiagnostic(
+			String blockedBy,
+			boolean huntingArea,
+			boolean ammunition,
+			boolean capacity,
+			boolean depositable,
+			boolean depositReachable
+	) {
+		int arrows = 0;
+		for (int slot = 0; slot < mob.getWorkInventory().getContainerSize(); slot++) {
+			ItemStack stack = mob.getWorkInventory().getItem(slot);
+			if (stack.is(ItemTags.ARROWS)) {
+				arrows += stack.count();
+			}
+		}
+		String diagnostic = blockedBy + "|profession=" + mob.getProfessionId()
+				+ "|bow=" + ProfessionEquipment.isValidBow(mob.getMainHandItem())
+				+ "|area=" + huntingArea + "|arrows=" + arrows
+				+ "|depositable=" + depositable + "|reachableDeposit=" + depositReachable
+				+ "|pendingLoot=" + hasPendingLoot() + "|capacity=" + capacity
+				+ "|ammunition=" + ammunition;
+		if (!diagnostic.equals(lastWorkDiagnostic)) {
+			lastWorkDiagnostic = diagnostic;
+			FantasyFolk.LOGGER.debug("Hunter diagnostics: work state hunter={} {}", mob.getUUID(), diagnostic);
+		}
 	}
 
 	private float rangedAttackUncertainty(ServerLevel level) {
@@ -412,6 +578,6 @@ public final class HunterRuntime<T extends PathfinderMob & ProfessionHolder & Wo
 				&& com.fantasyfolk.profession.ProfessionEquipment.professionFor(stack).isEmpty();
 	}
 
-	private record PendingLoot(BlockPos position, Set<UUID> baseline, int expiresAt) {
+	private record PendingLoot(BlockPos position, Set<UUID> baseline, int expiresAt, boolean collectedAny) {
 	}
 }

@@ -17,10 +17,12 @@ public final class HunterCollectLootGoal<T extends PathfinderMob & ProfessionHol
 		extends Goal {
 	private static final double SPEED = 1.0D;
 	private static final int MAX_COLLECTION_TICKS = 140;
+	private static final int MAX_PATH_FAILURES = 3;
 
 	private final HunterRuntime<T> runtime;
 	private Path path;
 	private int ticks;
+	private int pathFailures;
 	private boolean finished;
 
 	public HunterCollectLootGoal(HunterRuntime<T> runtime) {
@@ -41,6 +43,7 @@ public final class HunterCollectLootGoal<T extends PathfinderMob & ProfessionHol
 	@Override
 	public void start() {
 		ticks = 0;
+		pathFailures = 0;
 		finished = false;
 		path = null;
 		moveTowardsLoot();
@@ -71,9 +74,19 @@ public final class HunterCollectLootGoal<T extends PathfinderMob & ProfessionHol
 			if (path == null || runtime.mob().getNavigation().isDone()) {
 				path = createPath(item);
 				if (path == null || !runtime.mob().getNavigation().moveTo(path, SPEED)) {
-					finished = true;
+					registerPathFailure();
+				} else {
+					pathFailures = 0;
 				}
+			} else if (runtime.mob().getNavigation().isStuck()) {
+					registerPathFailure();
 			}
+			return;
+		}
+
+		if (runtime.shouldFinishLootCollection()) {
+			runtime.clearLoot();
+			finished = true;
 			return;
 		}
 
@@ -81,7 +94,7 @@ public final class HunterCollectLootGoal<T extends PathfinderMob & ProfessionHol
 			moveTowardsLoot();
 		}
 		if (runtime.mob().getNavigation().isStuck()) {
-			finished = true;
+			registerPathFailure();
 		}
 	}
 
@@ -106,8 +119,16 @@ public final class HunterCollectLootGoal<T extends PathfinderMob & ProfessionHol
 		}
 		path = createPath(runtime.lootPosition());
 		if (path == null || !runtime.mob().getNavigation().moveTo(path, SPEED)) {
-			finished = true;
+			registerPathFailure();
+		} else {
+			pathFailures = 0;
 		}
+	}
+
+	private void registerPathFailure() {
+		path = null;
+		pathFailures++;
+		finished = pathFailures >= MAX_PATH_FAILURES;
 	}
 
 	private Path createPath(ItemEntity item) {

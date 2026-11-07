@@ -8,6 +8,7 @@ import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.level.pathfinder.Path;
 
+import com.fantasyfolk.FantasyFolk;
 import com.fantasyfolk.inventory.WorkInventoryHolder;
 import com.fantasyfolk.profession.ProfessionHolder;
 
@@ -52,6 +53,10 @@ public final class HunterRangedAttackGoal<T extends PathfinderMob & ProfessionHo
 		unreachableTicks = 0;
 		gaveUp = false;
 		runtime.mob().setAggressive(true);
+		FantasyFolk.LOGGER.debug(
+				"Hunter diagnostics: ranged goal started hunter={} target={}",
+				runtime.mob().getUUID(), runtime.mob().getTarget().getUUID()
+		);
 	}
 
 	@Override
@@ -111,9 +116,13 @@ public final class HunterRangedAttackGoal<T extends PathfinderMob & ProfessionHo
 			drawTicks++;
 			if (drawTicks >= DRAW_TICKS) {
 				runtime.beginShot(target);
-				runtime.fireArrow(target);
+				boolean fired = runtime.fireArrow(target);
+				FantasyFolk.LOGGER.debug(
+						"Hunter diagnostics: fireArrow hunter={} target={} fired={} cooldownBefore={}",
+						runtime.mob().getUUID(), target.getUUID(), fired, cooldown
+				);
 				mob.stopUsingItem();
-				cooldown = SHOT_INTERVAL_TICKS;
+				cooldown = fired ? SHOT_INTERVAL_TICKS : 5;
 				drawTicks = 0;
 			}
 		}
@@ -135,6 +144,10 @@ public final class HunterRangedAttackGoal<T extends PathfinderMob & ProfessionHo
 		mob.setAggressive(false);
 		mob.getNavigation().stop();
 		mob.setTarget(null);
+		FantasyFolk.LOGGER.debug(
+				"Hunter diagnostics: ranged goal stopped hunter={} target={} gaveUp={} combatTicks={}",
+				mob.getUUID(), target == null ? "none" : target.getUUID(), gaveUp, combatTicks
+		);
 	}
 
 	@Override

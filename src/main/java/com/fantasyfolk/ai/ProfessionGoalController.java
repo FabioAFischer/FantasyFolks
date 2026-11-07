@@ -1,5 +1,8 @@
 package com.fantasyfolk.ai;
 
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.entity.ai.goal.GoalSelector;
 
@@ -56,6 +59,14 @@ public final class ProfessionGoalController<T extends PathfinderMob & Profession
 	public void onProfessionChanged() {
 		guardRuntime.onProfessionChanged();
 		hunterRuntime.onProfessionChanged();
+	}
+
+	public void onHunterKill(ServerLevel level, LivingEntity killed, DamageSource source) {
+		hunterRuntime.onHunterKill(level, killed, source);
+	}
+
+	public boolean hasPendingHunterLoot() {
+		return hunterRuntime.hasPendingLoot();
 	}
 
 	private T mob() {

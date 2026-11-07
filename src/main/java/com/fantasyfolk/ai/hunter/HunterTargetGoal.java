@@ -10,6 +10,7 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.entity.ai.goal.target.TargetGoal;
 
+import com.fantasyfolk.FantasyFolk;
 import com.fantasyfolk.inventory.WorkInventoryHolder;
 import com.fantasyfolk.profession.ProfessionHolder;
 
@@ -22,6 +23,7 @@ public final class HunterTargetGoal<T extends PathfinderMob & ProfessionHolder &
 	private final HunterRuntime<T> runtime;
 	private LivingEntity candidate;
 	private int nextScanTick;
+	private String lastScanDiagnostic;
 
 	public HunterTargetGoal(HunterRuntime<T> runtime) {
 		super(runtime.mob(), true, false);
@@ -56,6 +58,13 @@ public final class HunterTargetGoal<T extends PathfinderMob & ProfessionHolder &
 				.filter(target -> HunterNavigation.canReachTarget(mob, target, area))
 				.findFirst()
 				.orElse(null);
+		String diagnostic = candidate == null
+				? "none|profession=" + mob.getProfessionId() + "|area=" + area.center()
+				: "target=" + candidate.getUUID();
+		if (!diagnostic.equals(lastScanDiagnostic)) {
+			lastScanDiagnostic = diagnostic;
+			FantasyFolk.LOGGER.debug("Hunter diagnostics: target scan hunter={} {}", mob.getUUID(), diagnostic);
+		}
 		return candidate != null;
 	}
 
@@ -63,6 +72,10 @@ public final class HunterTargetGoal<T extends PathfinderMob & ProfessionHolder &
 	public void start() {
 		targetMob = candidate;
 		runtime.mob().setTarget(candidate);
+		FantasyFolk.LOGGER.debug(
+				"Hunter diagnostics: target selected hunter={} target={} arrows={}",
+				runtime.mob().getUUID(), candidate.getUUID(), runtime.hasAmmunition()
+		);
 		super.start();
 	}
 

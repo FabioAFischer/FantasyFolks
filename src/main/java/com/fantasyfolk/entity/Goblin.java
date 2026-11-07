@@ -1,6 +1,7 @@
 package com.fantasyfolk.entity;
 
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
@@ -109,6 +110,18 @@ public class Goblin extends PathfinderMob implements ProfessionHolder, WorkInven
 		this.professionId = professionId;
 		setItemSlot(EquipmentSlot.MAINHAND, equipment.isEmpty() ? ItemStack.EMPTY : equipment.copyWithCount(1));
 		notifyProfessionChanged();
+	}
+
+	/** Forwards the precise server-side kill callback to the active Hunter runtime. */
+	public void onHunterKill(ServerLevel level, LivingEntity killed, DamageSource source) {
+		if (professionGoals != null) {
+			professionGoals.onHunterKill(level, killed, source);
+		}
+	}
+
+	/** Keeps depot delivery from pre-empting an unfinished Hunter loot run. */
+	public boolean hasPendingHunterLoot() {
+		return professionGoals != null && professionGoals.hasPendingHunterLoot();
 	}
 
 	@Override

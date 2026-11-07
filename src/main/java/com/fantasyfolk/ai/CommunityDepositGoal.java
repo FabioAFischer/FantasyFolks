@@ -7,8 +7,14 @@ import java.util.Set;
 import java.util.UUID;
 
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.entity.ai.util.GoalUtils;
 import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.entity.ai.goal.Goal;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult;
+import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.level.pathfinder.Path;
 
 import com.fantasyfolk.community.Community;
@@ -16,13 +22,16 @@ import com.fantasyfolk.community.CommunityDepotManager;
 import com.fantasyfolk.community.CommunityItemTransfer;
 import com.fantasyfolk.community.CommunityManager;
 import com.fantasyfolk.community.CommunityState;
+import com.fantasyfolk.entity.Goblin;
 import com.fantasyfolk.inventory.WorkInventoryHolder;
 
 /** Moves a work-inventory holder to a registered community depot and deposits resources. */
 public final class CommunityDepositGoal<T extends PathfinderMob & WorkInventoryHolder> extends Goal {
 	private static final double SPEED = 1.0D;
 	private static final int MAX_TRAVEL_TICKS = 240;
+	private static final int MAX_PATH_FAILURES = 3;
 	private static final int RETRY_INTERVAL_TICKS = 60;
+	private static final double MAX_INTERACTION_DISTANCE_SQUARED = 6.25D;
 
 	private final T mob;
 	private Path path;
@@ -31,6 +40,7 @@ public final class CommunityDepositGoal<T extends PathfinderMob & WorkInventoryH
 	private Community cachedCommunity;
 	private int nextCommunityCheckTick;
 	private int travelTicks;
+	private int pathFailures;
 	private int nextAttemptTick;
 	private boolean finished;
 	private final Set<net.minecraft.core.BlockPos> attempted = new HashSet<>();
@@ -40,9 +50,36 @@ public final class CommunityDepositGoal<T extends PathfinderMob & WorkInventoryH
 		setFlags(EnumSet.of(Flag.MOVE));
 	}
 
+	/**
+	 * Used by profession Goals to decide whether delivery can actually take
+	 * precedence over ordinary work. A registered container that cannot be
+	 * reached must not permanently disable the profession's primary activity.
+	 */
+	public static boolean hasReachableDeposit(PathfinderMob mob) {
+		if (!(mob.level() instanceof ServerLevel level) || !(mob instanceof WorkInventoryHolder holder)) {
+			return false;
+		}
+		UUID communityId = holder.getCommunityId().orElse(null);
+		if (communityId == null) {
+			return false;
+		}
+		Community community = CommunityManager.findById(level.getServer(), communityId)
+				.filter(found -> found.state() == CommunityState.ACTIVE)
+				.filter(found -> found.dimension().equals(level.dimension()))
+				.orElse(null);
+		if (community == null) {
+			return false;
+		}
+		CommunityDepotManager.DepositTarget target = CommunityDepotManager.findAvailable(
+				level, communityId, holder.getWorkInventory(), Set.of(), holder::canDepositWorkItem
+		).orElse(null);
+		return target != null && createReachablePath(mob, level, community, target) != null;
+	}
+
 	@Override
 	public boolean canUse() {
 		if (mob.tickCount < nextAttemptTick || mob.isPassenger() || mob.getTarget() != null
+				|| hasPendingHunterLoot()
 				|| mob.getWorkInventory().isEmpty()
 				|| !hasDepositableItems()
 				|| !(mob.level() instanceof ServerLevel level)) {
@@ -61,7 +98,7 @@ public final class CommunityDepositGoal<T extends PathfinderMob & WorkInventoryH
 			nextAttemptTick = mob.tickCount + RETRY_INTERVAL_TICKS;
 			return false;
 		}
-		path = createPath(level, community, target.position());
+		path = createPath(level, community, target);
 		if (path == null) {
 			attempted.add(target.position());
 			nextAttemptTick = mob.tickCount + RETRY_INTERVAL_TICKS;
@@ -73,6 +110,7 @@ public final class CommunityDepositGoal<T extends PathfinderMob & WorkInventoryH
 	@Override
 	public void start() {
 		travelTicks = 0;
+		pathFailures = 0;
 		finished = !mob.getNavigation().moveTo(path, SPEED);
 	}
 
@@ -82,21 +120,24 @@ public final class CommunityDepositGoal<T extends PathfinderMob & WorkInventoryH
 				&& travelTicks < MAX_TRAVEL_TICKS
 				&& !mob.getWorkInventory().isEmpty()
 				&& hasDepositableItems()
+				&& !hasPendingHunterLoot()
 				&& mob.getTarget() == null
+				&& target != null
 				&& cachedCommunity != null;
 	}
 
 	@Override
 	public void tick() {
-		if (mob.getNavigation().isStuck()) {
+		ServerLevel level = (ServerLevel) mob.level();
+		if (target == null || cachedCommunity == null) {
 			finished = true;
 			return;
 		}
+
 		travelTicks++;
-		if (mob.distanceToSqr(target.position().getX() + 0.5D, target.position().getY(), target.position().getZ() + 0.5D) <= 9.0D
-				|| mob.getNavigation().isDone()) {
+		if (isAtInteractionPosition(level, target)) {
 			int transferred = CommunityDepotManager.deposit(
-					(ServerLevel) mob.level(),
+					level,
 					communityId,
 					target.depotId(),
 					mob.getWorkInventory(),
@@ -106,12 +147,29 @@ public final class CommunityDepositGoal<T extends PathfinderMob & WorkInventoryH
 				finished = true;
 				return;
 			}
+
 			attempted.add(target.position());
-			Community community = currentCommunity((ServerLevel) mob.level()).orElse(null);
-			target = community == null ? null : findTarget((ServerLevel) mob.level());
-			path = community == null || target == null ? null : createPath((ServerLevel) mob.level(), community, target.position());
+			Community community = currentCommunity(level).orElse(null);
+			target = community == null ? null : findTarget(level);
+			path = community == null || target == null ? null : createPath(level, community, target);
 			if (path == null || !mob.getNavigation().moveTo(path, SPEED)) {
-				finished = true;
+				registerPathFailure();
+			} else {
+				pathFailures = 0;
+			}
+			return;
+		}
+
+		if (mob.getNavigation().isStuck()) {
+			registerPathFailure();
+			return;
+		}
+		if (mob.getNavigation().isDone()) {
+			path = createPath(level, cachedCommunity, target);
+			if (path == null || !mob.getNavigation().moveTo(path, SPEED)) {
+				registerPathFailure();
+			} else {
+				pathFailures = 0;
 			}
 		}
 	}
@@ -159,12 +217,35 @@ public final class CommunityDepositGoal<T extends PathfinderMob & WorkInventoryH
 		return false;
 	}
 
-	private Path createPath(ServerLevel level, Community community, net.minecraft.core.BlockPos position) {
-		if (!level.isLoaded(position)) {
+	private boolean hasPendingHunterLoot() {
+		return mob instanceof Goblin goblin && goblin.hasPendingHunterLoot();
+	}
+
+	private Path createPath(
+			ServerLevel level,
+			Community community,
+			CommunityDepotManager.DepositTarget depot
+	) {
+		return createReachablePath(mob, level, community, depot);
+	}
+
+	private static Path createReachablePath(
+			PathfinderMob mob,
+			ServerLevel level,
+			Community community,
+			CommunityDepotManager.DepositTarget depot
+	) {
+		Set<BlockPos> candidates = depot.interactionPositions().stream()
+				.filter(position -> isUsableInteractionPosition(mob, level, position))
+				.collect(java.util.stream.Collectors.toUnmodifiableSet());
+		if (candidates.isEmpty()) {
 			return null;
 		}
-		Path candidate = mob.getNavigation().createPath(position, 1);
-		if (candidate == null || !candidate.canReach() || candidate.getNodeCount() == 0) {
+
+		Path candidate = mob.getNavigation().createPath(candidates, 1);
+		if (candidate == null || !candidate.canReach() || candidate.getNodeCount() == 0
+				|| candidate.getEndNode() == null
+				|| !candidates.contains(candidate.getEndNode().asBlockPos())) {
 			return null;
 		}
 		for (int index = 0; index < candidate.getNodeCount(); index++) {
@@ -173,5 +254,46 @@ public final class CommunityDepositGoal<T extends PathfinderMob & WorkInventoryH
 			}
 		}
 		return candidate;
+	}
+
+	private static boolean isUsableInteractionPosition(PathfinderMob mob, ServerLevel level, BlockPos position) {
+		return level.isLoaded(position)
+				&& Math.abs(position.getY() - mob.blockPosition().getY()) <= 10
+				&& mob.getNavigation().isStableDestination(position)
+				&& !GoalUtils.isWater(mob, position)
+				&& !GoalUtils.isSolid(mob, position)
+				&& !GoalUtils.hasMalus(mob, position);
+	}
+
+	private boolean isAtInteractionPosition(
+			ServerLevel level,
+			CommunityDepotManager.DepositTarget depot
+	) {
+		for (BlockPos containerPosition : depot.containerPositions()) {
+			if (mob.distanceToSqr(
+					containerPosition.getX() + 0.5D,
+					containerPosition.getY() + 0.5D,
+					containerPosition.getZ() + 0.5D
+			) > MAX_INTERACTION_DISTANCE_SQUARED) {
+				continue;
+			}
+			BlockHitResult hit = level.clip(new ClipContext(
+					mob.getEyePosition(),
+					Vec3.atCenterOf(containerPosition),
+					ClipContext.Block.COLLIDER,
+					ClipContext.Fluid.NONE,
+					mob
+			));
+			if (hit.getType() == HitResult.Type.BLOCK && hit.getBlockPos().equals(containerPosition)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private void registerPathFailure() {
+		path = null;
+		pathFailures++;
+		finished = pathFailures >= MAX_PATH_FAILURES;
 	}
 }

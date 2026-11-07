@@ -1,6 +1,7 @@
 package com.fantasyfolk.community;
 
 import java.util.Optional;
+import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Predicate;
@@ -12,6 +13,7 @@ import net.minecraft.world.Container;
 import net.minecraft.world.level.block.BarrelBlock;
 import net.minecraft.world.level.block.ChestBlock;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.core.Direction;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.ChestType;
 
@@ -150,7 +152,12 @@ public final class CommunityDepotManager {
 				.filter(resolved -> CommunityItemTransfer.canReceiveAny(
 						workInventory, resolved.current().container(), allowed
 				))
-				.map(resolved -> new DepositTarget(resolved.depot().id(), resolved.current().primary()))
+				.map(resolved -> new DepositTarget(
+						resolved.depot().id(),
+						resolved.current().primary(),
+						containerPositions(resolved.current()),
+						interactionPositions(resolved.current())
+				))
 				.findFirst();
 	}
 
@@ -309,7 +316,31 @@ public final class CommunityDepotManager {
 		return Integer.compare(first.getZ(), second.getZ());
 	}
 
-	public record DepositTarget(UUID depotId, BlockPos position) {
+	private static Set<BlockPos> containerPositions(CurrentContainer current) {
+		Set<BlockPos> positions = new HashSet<>();
+		positions.add(current.primary());
+		if (current.secondary() != null) {
+			positions.add(current.secondary());
+		}
+		return Set.copyOf(positions);
+	}
+
+	private static Set<BlockPos> interactionPositions(CurrentContainer current) {
+		Set<BlockPos> positions = new HashSet<>();
+		for (BlockPos containerPosition : containerPositions(current)) {
+			for (Direction direction : Direction.values()) {
+				positions.add(containerPosition.relative(direction));
+			}
+		}
+		return Set.copyOf(positions);
+	}
+
+	public record DepositTarget(
+			UUID depotId,
+			BlockPos position,
+			Set<BlockPos> containerPositions,
+			Set<BlockPos> interactionPositions
+	) {
 	}
 
 	public record DepotInfo(DepotType type, int occupiedSlots, int capacity) {
